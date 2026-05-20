@@ -1,0 +1,39 @@
+[project]
+name = "semantic-search"
+version = "0.1.0"
+description = "RAG semantic search backend — FastAPI + Celery + Qdrant + PostgreSQL"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "celery[redis]>=5.4.0",
+    "qdrant-client>=1.12.0",
+    "torch>=2.0.0",
+    "sentence-transformers>=3.3.0",
+    "pandas>=2.2.0",
+    "openpyxl>=3.1.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+
+# Force CPU-only PyTorch: drops triton, nvidia-cuda*, nvidia-nccl, etc.
+# (~250 MB instead of ~2.5 GB). Works for both dev and prod (no GPU in containers).
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

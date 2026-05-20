@@ -1,0 +1,37 @@
+# Production overrides — usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    volumes: []
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    volumes: []   # no source mount in production
+    restart: always
+    command:
+      - uvicorn
+      - src.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --workers
+      - "2"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    volumes: []
+    restart: always
+    command:
+      - celery
+      - -A
+      - src.tasks.celery_app.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=4

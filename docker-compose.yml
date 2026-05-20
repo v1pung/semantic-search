@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-semantic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-semantic}
+      POSTGRES_DB: ${POSTGRES_DB:-semantic_search}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-semantic} -d ${POSTGRES_DB:-semantic_search}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # bash /dev/tcp: no wget/curl in qdrant image; this checks TCP readiness
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Service-network topology — always override whatever is in .env
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      # Prevents tokenizers/joblib from spawning sub-processes (avoids loky semaphore leak)
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      # Mount source for hot-reload
+      - .:/app
+      # Prevent host .venv from shadowing the container's Python 3.14 venv
+      - /app/.venv
+      # Persist HuggingFace model cache across container rebuilds
+      - model_cache:/app/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - .:/app
+      - /app/.venv
+      - model_cache:/app/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    command:
+      - uv
+      - run
+      - celery
+      - -A
+      - src.tasks.celery_app.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=2
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  model_cache:

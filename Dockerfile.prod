@@ -1,0 +1,49 @@
+# Stage 1: build
+FROM python:3.14-slim AS builder
+
+# Corporate proxy required
+ENV http_proxy=http://10.0.20.6:80
+ENV https_proxy=http://10.0.20.6:80
+# Store the model inside /app so it travels with the image in a single COPY
+ENV HF_HOME=/app/.cache/huggingface
+
+RUN pip install uv --no-cache-dir
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+# --frozen: skip resolution, install exactly what's in uv.lock (faster + reproducible).
+# --mount=type=cache keeps downloaded wheels on the build host between rebuilds.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+COPY . .
+
+# Pre-download the embedding model — baked into the image, no internet at runtime
+RUN uv run python -c \
+    "from sentence_transformers import SentenceTransformer; \
+     SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+
+
+# Stage 2: runtime
+FROM python:3.14-slim AS runtime
+
+# Corporate proxy
+ENV http_proxy=http://10.0.20.6:80
+ENV https_proxy=http://10.0.20.6:80
+# Must match the path used in the builder stage
+ENV HF_HOME=/app/.cache/huggingface
+
+# Non-root user
+RUN useradd -m -u 1000 appuser
+
+WORKDIR /app
+
+# Single COPY: brings venv, source, and cached model in one layer; set ownership inline
+COPY --from=builder --chown=appuser:appuser /app /app
+
+USER appuser
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
