@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = Field(default="paraphrase-multilingual-MiniLM-L12-v2")
     SEARCH_TOP_K: int = Field(default=5, ge=1, le=20)
 
+    # Rate limiting
+    RATE_LIMIT_SEARCH: str = Field(
+        default="30/minute",
+        description="Max requests to POST /search per IP per window (e.g. '30/minute')",
+    )
+    RATE_LIMIT_INGEST: str = Field(
+        default="5/minute",
+        description="Max requests to GET /ingest per IP per window (e.g. '5/minute')",
+    )
+    REDIS_RATE_LIMIT_DB: int = Field(
+        default=2,
+        description="Redis DB index for rate-limit counters (separate from Celery)",
+    )
+
     # Computed connection URLs
 
     @computed_field  # type: ignore[prop-decorator]
@@ -56,6 +70,12 @@ class Settings(BaseSettings):
     @property
     def REDIS_BACKEND_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_BACKEND_DB}"
+
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def REDIS_RATE_LIMIT_URL(self) -> str:
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_RATE_LIMIT_DB}"
 
 
 @lru_cache
