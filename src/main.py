@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.v1 import api_router
 from src.core.config import get_settings
@@ -49,6 +50,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(api_router, prefix="/api/v1")
+
+    # Expose Prometheus metrics at /metrics
+    Instrumentator().instrument(app).expose(app)
 
     @app.exception_handler(VectorStoreError)
     async def _vector_store_error(
