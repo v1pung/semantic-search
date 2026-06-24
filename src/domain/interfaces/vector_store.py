@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.domain.entities import VectorPoint
+from src.domain.entities import PointMeta, VectorPoint
 
 
 class AbstractVectorStore(ABC):
@@ -15,6 +15,9 @@ class AbstractVectorStore(ABC):
 
     @abstractmethod
     async def get_all_with_hash(self) -> dict[str, str]: ...
+
+    @abstractmethod
+    async def get_metadata(self) -> dict[str, PointMeta]: ...
 
     @abstractmethod
     async def search(self, query_vector: list[float], top_k: int) -> list[dict]: ...
