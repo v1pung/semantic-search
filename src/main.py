@@ -6,10 +6,14 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from src.api.v1 import api_router
 from src.core.config import get_settings
 from src.core.logging import configure_logging
+from src.core.rate_limit import limiter
 from src.dependencies import (
     warmup_embedder,
     warmup_qdrant_client,
@@ -43,16 +47,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     configure_logging()
+
     app = FastAPI(
         title="Semantic Search API",
         description="RAG-based Q&A semantic search powered by Qdrant + sentence-transformers",
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    # Attach the module-level limiter to app.state so SlowAPI middleware can
+    # find it, and add the middleware + 429 exception handler.
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+
     app.include_router(api_router, prefix="/api/v1")
 
     # Expose Prometheus metrics at /metrics
     Instrumentator().instrument(app).expose(app)
+
+    # ── Exception handlers ───────────────────────────────────────────────────
+
+    # 429 Too Many Requests — produced by @limiter.limit decorators
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     @app.exception_handler(VectorStoreError)
     async def _vector_store_error(
