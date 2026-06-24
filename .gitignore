@@ -10,6 +10,9 @@ __pycache__/
 dist/
 build/
 
+# HuggingFace model cache — downloaded via `make download-model`, baked into prod image
+models/
+
 # HuggingFace model cache
 .cache/
 
