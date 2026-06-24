@@ -1,7 +1,8 @@
-# Never copy these into the build context
+# Never copy these into the dev build context
 .env
 .venv/
 .cache/
+models/
 __pycache__/
 *.pyc
 *.pyo

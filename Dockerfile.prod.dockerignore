@@ -1,0 +1,24 @@
+# Dockerignore for Dockerfile.prod — used by BuildKit automatically.
+# Differs from the default .dockerignore: models/ is INCLUDED here
+# so the pre-downloaded model is COPYed into the image.
+
+.env
+.venv/
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# Dev/docs
+plan.md
+*.md
+!README.md
+
+# Logs
+logs/
+*.log
