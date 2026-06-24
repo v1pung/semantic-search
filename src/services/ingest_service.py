@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from src.domain.entities import VectorPoint
 from src.domain.interfaces.data_loader import AbstractDataLoader
@@ -21,6 +22,10 @@ class IngestService:
 
     Only new or modified records are re-embedded; deleted records are removed.
     Unchanged records are skipped — zero wasted compute.
+
+    Timestamps:
+      - created_at  — set once when the point is first inserted; preserved on updates.
+      - updated_at  — refreshed every time the point is (re)embedded.
     """
 
     def __init__(
@@ -52,8 +57,11 @@ class IngestService:
         # Ensure collection exists
         await self._vector_store.init_collection(self._embedder.vector_size())
 
-        # Fetch existing points with their stored content hashes
-        existing: dict[str, str] = await self._vector_store.get_all_with_hash()
+        # Fetch existing metadata: {point_id: PointMeta(content_hash, created_at)}
+        existing_meta = await self._vector_store.get_metadata()
+        existing: dict[str, str] = {
+            pid: meta.content_hash for pid, meta in existing_meta.items()
+        }
 
         # Determine which points need (re)embedding: new or changed
         to_upsert_ids = [
@@ -64,6 +72,7 @@ class IngestService:
 
         upserted = 0
         if to_upsert_ids:
+            now = datetime.now(timezone.utc)
             questions = [csv_index[pid]["pair"].question for pid in to_upsert_ids]
             # sentence-transformers is sync, run in thread pool
             vectors = await asyncio.to_thread(self._embedder.embed, questions)
@@ -75,6 +84,13 @@ class IngestService:
                     question=csv_index[pid]["pair"].question,
                     answer=csv_index[pid]["pair"].answer,
                     content_hash=csv_index[pid]["content_hash"],
+                    # Preserve original created_at for existing points; set now for new ones.
+                    created_at=(
+                        existing_meta[pid].created_at
+                        if pid in existing_meta
+                        else now
+                    ),
+                    updated_at=now,
                 )
                 for pid, vector in zip(to_upsert_ids, vectors)
             ]
