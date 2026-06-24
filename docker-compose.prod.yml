@@ -1,16 +1,41 @@
-# Production overrides — usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Production overlay — usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Extends the base docker-compose.yml with:
+#   - Prod Dockerfile (model baked in, no-proxy hardened, multi-worker)
+#   - No source volume mounts (image is self-contained)
+#   - restart: always
+#   - Higher Celery concurrency
+#   - One-shot migrate service (runs alembic upgrade head before app starts)
+
 services:
   migrate:
     build:
       context: .
       dockerfile: Dockerfile.prod
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      TOKENIZERS_PARALLELISM: "false"
     volumes: []
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - alembic
+      - upgrade
+      - head
 
   app:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    volumes: []   # no source mount in production
+    volumes: []   # no source mount — model and code are baked into the image
     restart: always
     command:
       - uvicorn

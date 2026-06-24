@@ -1,0 +1,45 @@
+# Development overlay — loaded automatically by `docker compose up` (no -f needed).
+# Extends the base docker-compose.yml with:
+#   - Hot-reload via source volume mount and --reload flag
+#   - HuggingFace model cache volume (shared between app and worker)
+#   - No restart policy (failures surface immediately during development)
+
+services:
+  app:
+    volumes:
+      # Mount source for hot-reload
+      - .:/app
+      # Prevent host .venv from shadowing the container's Python 3.14 venv
+      - /app/.venv
+      # Persist HuggingFace model cache across container rebuilds
+      - model_cache:/app/.cache/huggingface
+    command:
+      - uv
+      - run
+      - uvicorn
+      - src.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - src
+
+  worker:
+    volumes:
+      - .:/app
+      - /app/.venv
+      - model_cache:/app/.cache/huggingface
+    command:
+      - uv
+      - run
+      - celery
+      - -A
+      - src.tasks.celery_app.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=2
+
+volumes:
+  model_cache:
