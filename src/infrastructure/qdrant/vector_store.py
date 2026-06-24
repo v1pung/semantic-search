@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from qdrant_client import AsyncQdrantClient
@@ -9,7 +10,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from src.domain.entities import VectorPoint
+from src.domain.entities import PointMeta, VectorPoint
 from src.domain.exceptions import VectorStoreError
 from src.domain.interfaces.vector_store import AbstractVectorStore
 
@@ -66,6 +67,8 @@ class QdrantVectorStore(AbstractVectorStore):
                         "question": p.question,
                         "answer": p.answer,
                         "content_hash": p.content_hash,
+                        "created_at": p.created_at.isoformat(),
+                        "updated_at": p.updated_at.isoformat(),
                     },
                 )
                 for p in points
@@ -113,6 +116,42 @@ class QdrantVectorStore(AbstractVectorStore):
                     break
         except Exception as exc:
             raise VectorStoreError("Failed to scroll Qdrant collection") from exc
+
+        return result
+
+    async def get_metadata(self) -> dict[str, PointMeta]:
+        """Scroll through the collection and return {point_id: PointMeta}."""
+        result: dict[str, PointMeta] = {}
+        next_offset: str | UUID | None = None
+
+        try:
+            while True:
+                records, next_offset = await self._client.scroll(
+                    collection_name=self._collection_name,
+                    with_payload=["content_hash", "created_at"],
+                    with_vectors=False,
+                    limit=100,
+                    offset=next_offset,
+                )
+                for record in records:
+                    if record.payload and "content_hash" in record.payload:
+                        raw_ts = record.payload.get("created_at")
+                        if raw_ts:
+                            try:
+                                created_at = datetime.fromisoformat(raw_ts)
+                            except (ValueError, TypeError):
+                                created_at = datetime.now(timezone.utc)
+                        else:
+                            created_at = datetime.now(timezone.utc)
+                        result[str(record.id)] = PointMeta(
+                            content_hash=record.payload["content_hash"],
+                            created_at=created_at,
+                        )
+
+                if next_offset is None:
+                    break
+        except Exception as exc:
+            raise VectorStoreError("Failed to scroll Qdrant metadata") from exc
 
         return result
 
