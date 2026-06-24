@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter
 
 from src.schemas.ingest import IngestResponse
@@ -17,5 +19,6 @@ router = APIRouter()
     ),
 )
 async def trigger_ingest() -> IngestResponse:
+    started_at = datetime.now(timezone.utc)
     task = ingest_data.delay()
-    return IngestResponse(task_id=task.id, status="queued")
+    return IngestResponse(task_id=task.id, status="queued", started_at=started_at)

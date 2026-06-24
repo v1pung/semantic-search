@@ -15,3 +15,7 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SearchResult]
+    total_results: int = Field(..., description="Number of results returned")
+    search_duration_ms: float = Field(
+        ..., description="Total search wall time in milliseconds"
+    )

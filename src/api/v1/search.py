@@ -1,3 +1,4 @@
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -14,15 +15,21 @@ router = APIRouter()
     response_model=SearchResponse,
     summary="Semantic search over Q&A pairs",
     description=(
-        "Embeds the user query and retrieves the top-5 most similar questions "
-        "from the vector database. Statistics (query text, timestamp, search "
-        "duration) are persisted as part of the use case and do not affect "
-        "response time on failure."
+        "Embeds the user query and retrieves the top-k most similar questions "
+        "from the vector database. The response includes timing metrics and "
+        "result count. Statistics (query text, timestamp, durations, scores) "
+        "are persisted as part of the use case and do not affect response on failure."
     ),
 )
 async def semantic_search(
     request: SearchRequest,
     search_service: Annotated[SearchService, Depends(get_search_service)],
 ) -> SearchResponse:
+    t0 = perf_counter()
     results = await search_service.search(request.query, top_k=5)
-    return SearchResponse(results=results)
+    search_duration_ms = (perf_counter() - t0) * 1000
+    return SearchResponse(
+        results=results,
+        total_results=len(results),
+        search_duration_ms=round(search_duration_ms, 3),
+    )
