@@ -18,5 +18,5 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     # Prevent task result accumulation in Redis
-    result_expires=3600,
+    result_expires=_settings.CELERY_RESULT_EXPIRES,
 )

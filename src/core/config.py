@@ -58,6 +58,12 @@ class Settings(BaseSettings):
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    # Celery
+    CELERY_RESULT_EXPIRES: int = Field(
+        default=3600,
+        description="Seconds before Celery task results are evicted from Redis",
+    )
+
     REDIS_BROKER_DB: int = Field(default=0, description="Redis DB index for Celery broker")
     REDIS_BACKEND_DB: int = Field(default=1, description="Redis DB index for Celery result backend")
 

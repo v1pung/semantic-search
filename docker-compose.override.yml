@@ -39,7 +39,7 @@ services:
       - src.tasks.celery_app.celery_app
       - worker
       - --loglevel=info
-      - --concurrency=2
+      - --concurrency=${WORKER_CONCURRENCY:-2}
 
 volumes:
   model_cache:

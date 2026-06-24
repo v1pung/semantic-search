@@ -45,7 +45,7 @@ services:
       - --port
       - "8000"
       - --workers
-      - "2"
+      - "${APP_WORKERS:-2}"
 
   worker:
     build:
@@ -59,4 +59,4 @@ services:
       - src.tasks.celery_app.celery_app
       - worker
       - --loglevel=info
-      - --concurrency=4
+      - --concurrency=${WORKER_CONCURRENCY:-4}
