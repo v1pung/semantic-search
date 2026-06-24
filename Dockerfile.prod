@@ -1,45 +1,62 @@
-# Stage 1: build
+# ── Stage 1: builder ──────────────────────────────────────────────────────────
 FROM python:3.14-slim AS builder
 
-# Corporate proxy required
+# Corporate proxy — needed to reach PyPI / HuggingFace during the build.
+# Both vars are unset at the END of this stage so the cached pip/uv index
+# responses don't embed the proxy URL into wheels, and so the runtime stage
+# never inherits them.
 ENV http_proxy=http://10.0.20.6:80
 ENV https_proxy=http://10.0.20.6:80
-# Store the model inside /app so it travels with the image in a single COPY
-ENV HF_HOME=/app/.cache/huggingface
+
+# HF_HOME must match the path used in scripts/download_model.py and runtime.
+ENV HF_HOME=/app/models
 
 RUN pip install uv --no-cache-dir
 
 WORKDIR /app
 
+# Deps first — layer is cached as long as pyproject.toml / uv.lock don't change.
 COPY pyproject.toml uv.lock ./
-# --frozen: skip resolution, install exactly what's in uv.lock (faster + reproducible).
-# --mount=type=cache keeps downloaded wheels on the build host between rebuilds.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
+# Application source
 COPY . .
 
-# Pre-download the embedding model — baked into the image, no internet at runtime
-RUN uv run python -c \
-    "from sentence_transformers import SentenceTransformer; \
-     SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+# Pre-downloaded model: copy from the local models/ directory.
+# Run `make download-model` before building this image.
+# models/ is excluded from the dev .dockerignore but included in
+# Dockerfile.prod.dockerignore (picked up automatically by BuildKit).
+COPY models/ /app/models/
+
+# Clear proxy variables — they must not leak into the runtime image or into
+# any COPY-inherited metadata; connections to internal infra (Postgres, Redis,
+# Qdrant) would be incorrectly tunnelled through the corporate proxy otherwise.
+ENV http_proxy=""
+ENV https_proxy=""
+ENV HTTP_PROXY=""
+ENV HTTPS_PROXY=""
 
 
-# Stage 2: runtime
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.14-slim AS runtime
 
-# Corporate proxy
-ENV http_proxy=http://10.0.20.6:80
-ENV https_proxy=http://10.0.20.6:80
-# Must match the path used in the builder stage
-ENV HF_HOME=/app/.cache/huggingface
+# HF_HOME must match the builder stage so SentenceTransformer finds the cache.
+ENV HF_HOME=/app/models
+
+# Proxy vars are intentionally NOT set here — runtime containers must connect
+# directly to internal services (Postgres, Redis, Qdrant).
+# If a corporate proxy is needed for outbound internet calls, set it via
+# docker-compose environment: or Kubernetes env, never baked into the image.
+ENV no_proxy="localhost,127.0.0.1,postgres,redis,qdrant,*.svc.cluster.local"
+ENV NO_PROXY="localhost,127.0.0.1,postgres,redis,qdrant,*.svc.cluster.local"
 
 # Non-root user
 RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Single COPY: brings venv, source, and cached model in one layer; set ownership inline
+# Single COPY: venv + source + baked-in model, ownership set inline.
 COPY --from=builder --chown=appuser:appuser /app /app
 
 USER appuser
